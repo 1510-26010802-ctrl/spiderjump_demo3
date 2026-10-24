@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spider jump 3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d131a;
+            color: #ffffff;
+            font-family: 'Jua', 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: #0f172a;
+        }
+        .custom-shadow {
+            text-shadow: 0 3px 6px rgba(0,0,0,0.8), 0 0 10px rgba(74, 222, 128, 0.5);
+        }
+        .btn-style {
+            background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4), inset 0 2px 2px rgba(255, 255, 255, 0.3);
+            transition: all 0.15s ease-in-out;
+        }
+        .btn-style:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 6px 20px rgba(34, 197, 94, 0.6), inset 0 2px 2px rgba(255, 255, 255, 0.4);
+        }
+        .btn-style:active {
+            transform: translateY(1px) scale(0.98);
+        }
+        .star-anim {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+            80% { transform: scale(1.2) rotate(10deg); }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center h-screen w-screen relative select-none" oncontextmenu="return false;">
+
+    <!-- Canvas Game Container -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Overlay System -->
+    <div id="uiContainer" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- Top HUD Header -->
+        <div id="hudHeader" class="flex justify-between items-start w-full opacity-0 transition-opacity duration-300">
+            <!-- Stage & Score Info -->
+            <div class="glass-card px-4 py-2.5 rounded-2xl flex items-center space-x-4 border border-emerald-500/30">
+                <div>
+                    <div id="hudStage" class="text-xs text-emerald-400 font-bold uppercase tracking-wider">STAGE 1</div>
+                    <div id="hudTitle" class="text-xl md:text-2xl font-black text-white custom-shadow">울창한 풀숲 입구</div>
+                </div>
+            </div>
+
+            <!-- Stats HUD (Time, Kills, Pause Button) -->
+            <div class="flex items-center space-x-3 pointer-events-auto">
+                <div class="glass-card px-3 py-2 rounded-xl flex items-center space-x-2">
+                    <span class="text-xs text-slate-400">⏱️ 시간</span>
+                    <span id="hudTime" class="text-lg font-bold text-amber-300 min-w-[50px] text-right">00:00</span>
+                </div>
+                <div class="glass-card px-3 py-2 rounded-xl flex items-center space-x-2">
+                    <span class="text-xs text-slate-400">🕷️ 처치</span>
+                    <span id="hudKills" class="text-lg font-bold text-rose-400">0</span>
+                </div>
+                <!-- Pause Button -->
+                <button onclick="togglePause()" class="glass-card px-3 py-2 rounded-xl flex items-center justify-center hover:bg-slate-800 transition active:scale-95 text-xl cursor-pointer border border-white/20" title="일시정지 (ESC)">
+                    ⏸️
+                </button>
+            </div>
+        </div>
+
+        <!-- Controls Hint Overlay (Middle Left Side) -->
+        <div id="hudControls" class="hidden md:flex flex-col gap-2 absolute left-6 top-1/2 -translate-y-1/2 glass-card p-3 rounded-2xl text-xs text-slate-300 border border-white/5 opacity-80">
+            <div class="font-bold text-emerald-400 mb-1 border-b border-white/10 pb-1">조작법</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">A</kbd> <kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">D</kbd> 이동</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">Space / W</kbd> 점프 (와이어 중엔 줄 당기기)</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">Shift + WASD</kbd> 8방향 대시</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">Shift (단독)</kbd> 거미줄 탄환 발사 & 넉백 (쿨 2초)</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">좌클릭 누르기</kbd> 어디든 벽에 자유 와이어 그랩</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">우클릭 누르기/떼기</kbd> 적에게 밀착 후 떼면 처치+도약!</div>
+            <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded text-white">ESC / P</kbd> 일시정지</div>
+        </div>
+
+        <!-- Bottom Summit Progress HUD Bar & Right Bottom Cooldown Indicator -->
+        <div id="hudProgress" class="w-full flex items-end justify-between opacity-0 transition-opacity duration-300 pointer-events-none">
+            
+            <div class="w-28 hidden md:block"></div>
+
+            <!-- Progress Track (Center) -->
+            <div class="glass-card p-3 rounded-2xl border border-emerald-500/20 shadow-2xl w-full max-w-xl mx-auto">
+                <div class="flex justify-between items-center text-xs font-bold text-slate-300 mb-1.5 px-1">
+                    <span class="flex items-center gap-1 text-emerald-400">🌿 출발점</span>
+                    <span id="progressPercent" class="text-amber-300 font-extrabold text-sm">0%</span>
+                    <span class="flex items-center gap-1 text-amber-400">🚩 정상 도착점</span>
+                </div>
+                <div class="relative w-full h-3 bg-slate-900/90 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+                    <div id="progressBar" class="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-400 rounded-full transition-all duration-75 w-0 shadow-[0_0_12px_rgba(52,211,153,0.8)]"></div>
+                </div>
+            </div>
+
+            <!-- Cooldown Indicator UI (Bottom Right) -->
+            <div class="glass-card p-3 rounded-2xl border border-teal-500/30 flex flex-col items-center justify-center min-w-[110px] space-y-1 ml-3">
+                <div class="text-[11px] font-bold text-teal-300 flex items-center gap-1">
+                    <span>🕸️ 거미줄 탄환 (Shift)</span>
+                </div>
+                <div id="cooldownText" class="text-lg font-black text-emerald-400">READY</div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+                    <div id="cooldownBar" class="h-full bg-emerald-400 w-full transition-all duration-75"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Start / Main Menu Modal Screen -->
+    <div id="menuModal" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-lg w-full p-8 rounded-3xl border border-emerald-500/30 text-center shadow-2xl relative overflow-hidden">
+            <div class="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-12 -left-12 w-40 h-40 bg-teal-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="inline-block bg-emerald-500/10 text-emerald-400 text-xs font-bold px-3 py-1 rounded-full mb-3 border border-emerald-500/20">
+                자유로운 벽 그랩 & 초고속 플랫포머
+            </div>
+            
+            <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-200 to-amber-300 mb-2 leading-tight tracking-wide custom-shadow">
+                Spider jump 3.0
+            </h1>
+            <p class="text-slate-300 text-sm mb-6">적을 우클릭으로 붙들고 있다가 떼어내며 강력하게 도약하세요!</p>
+
+            <!-- Mode/Stage Select Button Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                <button onclick="startGame(1)" class="btn-style group p-4 rounded-2xl text-left border border-emerald-400/30 text-white cursor-pointer pointer-events-auto">
+                    <div class="text-xs text-emerald-200 font-bold mb-1">STAGE 1</div>
+                    <div class="text-lg font-black">울창한 숲속 수풀</div>
+                    <div class="text-[11px] text-emerald-100/80 mt-1">작고 신속한 구조물 정복</div>
+                </button>
+                <button onclick="startGame(2)" class="btn-style group p-4 rounded-2xl text-left border border-amber-400/30 text-white cursor-pointer pointer-events-auto bg-gradient-to-br from-amber-600 to-emerald-700">
+                    <div class="text-xs text-amber-200 font-bold mb-1">STAGE 2</div>
+                    <div class="text-lg font-black">험난한 암벽 절벽</div>
+                    <div class="text-[11px] text-amber-100/80 mt-1">밀집된 바위 발판 코스</div>
+                </button>
+            </div>
+
+            <!-- Detailed Key Guide Box -->
+            <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 text-left text-xs text-slate-300 space-y-1.5 mb-2">
+                <div class="text-emerald-400 font-bold mb-1 flex items-center justify-between">
+                    <span>🎮 조작 가이드</span>
+                    <span class="text-[10px] text-slate-400">마우스 + 키보드</span>
+                </div>
+                <div>• <span class="text-amber-300 font-bold">마우스 좌클릭 (어디든 클릭)</span>: 벽/천장/발판 와이어 그랩</div>
+                <div>• <span class="text-purple-400 font-bold">마우스 우클릭 (누르기)</span>: 조준 근처 적에게 순식간에 붙기</div>
+                <div>• <span class="text-rose-400 font-bold">마우스 우클릭 (떼기)</span>: 적을 처치하며 조준 방향으로 강력 도약!</div>
+                <div>• <span class="text-amber-300 font-bold">Space / W</span>: 기본 점프</div>
+                <div>• <span class="text-amber-300 font-bold">WASD + Shift</span>: 8방향 지정 대시</div>
+                <div>• <span class="text-amber-300 font-bold">Shift (단독)</span>: 거미줄 탄환 발사 & 넉백 (2초 쿨타임)</div>
+                <div>• <span class="text-emerald-400 font-bold">ESC / P</span>: 일시정지 창 열기</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause Modal Screen -->
+    <div id="pauseModal" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-sm w-full p-6 rounded-3xl border border-emerald-500/30 text-center shadow-2xl relative overflow-hidden">
+            <div class="inline-block bg-amber-500/10 text-amber-400 text-xs font-bold px-3 py-1 rounded-full mb-2 border border-amber-500/20">
+                PAUSED
+            </div>
+            <h2 class="text-2xl font-black text-white mb-4 custom-shadow">일시정지</h2>
+
+            <!-- Star Missions Box in Pause Menu -->
+            <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 text-left mb-5 space-y-2.5">
+                <div class="text-amber-400 font-bold text-xs border-b border-slate-800 pb-1.5 flex justify-between items-center">
+                    <span>⭐ 별 미션 목표</span>
+                    <span id="pauseMissionCount" class="text-[11px] text-slate-400">달성: 0 / 3</span>
+                </div>
+                
+                <!-- Mission 1 -->
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <span id="pauseM1Icon" class="text-slate-500">⭐</span>
+                        <span id="pauseM1Text" class="text-slate-300">적 5마리 이상 처치</span>
+                    </div>
+                    <span id="pauseM1Status" class="text-[11px] font-bold text-slate-400">(0/5)</span>
+                </div>
+
+                <!-- Mission 2 -->
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <span id="pauseM2Icon" class="text-slate-500">⭐</span>
+                        <span id="pauseM2Text" class="text-slate-300">25초 안에 클리어</span>
+                    </div>
+                    <span id="pauseM2Status" class="text-[11px] font-bold text-slate-400">진행중</span>
+                </div>
+
+                <!-- Mission 3 -->
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <span id="pauseM3Icon" class="text-slate-500">⭐</span>
+                        <span id="pauseM3Text" class="text-slate-300">최초 클리어</span>
+                    </div>
+                    <span id="pauseM3Status" class="text-[11px] font-bold text-slate-400">미완료</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2.5">
+                <button onclick="resumeGame()" class="btn-style py-3 rounded-xl font-bold text-white text-sm cursor-pointer pointer-events-auto">
+                    ▶️ 게임 계속하기
+                </button>
+                <button onclick="retryStage()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 py-3 rounded-xl font-bold text-white text-sm cursor-pointer pointer-events-auto transition">
+                    🔄 다시 시도
+                </button>
+                <button onclick="openMenu()" class="bg-rose-900/50 hover:bg-rose-900/80 border border-rose-500/30 py-3 rounded-xl font-bold text-rose-200 text-sm cursor-pointer pointer-events-auto transition">
+                    📋 메인 메뉴로
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over / Victory Screen Modal -->
+    <div id="endModal" class="hidden absolute inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="glass-card max-w-md w-full p-8 rounded-3xl border border-white/10 text-center shadow-2xl relative overflow-hidden">
+            <div id="endStatusBadge" class="inline-block px-3 py-1 rounded-full text-xs font-extrabold uppercase mb-2"></div>
+            <h2 id="endTitle" class="text-4xl font-black text-white mb-2 custom-shadow">클리어!</h2>
+            <p id="endSubtitle" class="text-slate-300 text-sm mb-4">산 정상에 무사히 도달했습니다.</p>
+
+            <!-- Star Rating Box -->
+            <div id="starContainer" class="flex justify-center items-center space-x-3 mb-5 min-h-[50px]">
+                <!-- Stars dynamically populated -->
+            </div>
+
+            <!-- Mission Result Badges -->
+            <div id="endMissionsBox" class="bg-slate-900/80 p-3 rounded-2xl border border-slate-800 text-xs text-left mb-5 space-y-1.5">
+                <div class="text-amber-400 font-bold mb-1 border-b border-slate-800 pb-1">⭐ 별 미션 달성 현황</div>
+                <div id="endM1" class="flex items-center gap-2 text-slate-400"><span>⭐</span> 적 5마리 이상 처치</div>
+                <div id="endM2" class="flex items-center gap-2 text-slate-400"><span>⭐</span> 25초 안에 클리어</div>
+                <div id="endM3" class="flex items-center gap-2 text-slate-400"><span>⭐</span> 최초 클리어</div>
+            </div>
+
+            <!-- Game Stats Results Box -->
+            <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 text-sm text-slate-300 space-y-2 mb-6">
+                <div class="flex justify-between border-b border-slate-800 pb-2">
+                    <span class="text-slate-400">클리어 타임</span>
+                    <span id="resultTime" class="font-bold text-amber-300">00:00.00</span>
+                </div>
+                <div class="flex justify-between border-b border-slate-800 pb-2">
+                    <span class="text-slate-400">처치한 적 수</span>
+                    <span id="resultKills" class="font-bold text-rose-400">0 명</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">최종 스피드 랭크</span>
+                    <span id="resultRank" class="font-black text-emerald-400">S CLASS</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3">
+                <button onclick="retryStage()" class="btn-style flex-1 py-3.5 rounded-xl font-bold text-white text-base cursor-pointer pointer-events-auto">
+                    🔄 다시 시도
+                </button>
+                <button onclick="openMenu()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 flex-1 py-3.5 rounded-xl font-bold text-white text-base cursor-pointer pointer-events-auto transition">
+                    📋 메인 메뉴
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio FX Synthesizer (Web Audio API) -->
+    <script>
+        const AudioFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playWebShoot() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(900, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            },
+            playDash() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 0.15;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1000, now);
+                filter.frequency.linearRampToValueAtTime(300, now + 0.15);
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            },
+            playTeleport() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(1600, now + 0.12);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.12);
+            },
+            playLeap() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.18);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.18);
+            },
+            playBlast() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            },
+            playEnemyPop() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(320, now);
+                osc.frequency.exponentialRampToValueAtTime(640, now + 0.08);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            },
+            playVictory() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.1);
+                    osc.stop(now + idx * 0.1 + 0.3);
+                });
+            }
+        };
+    </script>
+
+    <!-- Main Game Script -->
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'PAUSED', 'VICTORY', 'GAMEOVER'
+        let currentStageIndex = 1;
+        let gameTime = 0;
+        let killCount = 0;
+        let screenShake = 0;
+        let lastTimestamp = performance.now();
+
+        const mouse = { x: 0, y: 0, screenX: 0, screenY: 0, down: false, rightDown: false };
+
+        const camera = {
+            x: 0,
+            y: 0,
+            update(target) {
+                const targetX = target.x - canvas.width / 2;
+                const targetY = target.y - canvas.height / 2;
+                this.x += (targetX - this.x) * 0.1;
+                this.y += (targetY - this.y) * 0.1;
+                this.x = Math.max(0, Math.min(this.x, level.width - canvas.width));
+                this.y = Math.max(0, Math.min(this.y, level.height - canvas.height));
+            }
+        };
+
+        const level = {
+            width: 3000,
+            height: 4500,
+            startY: 4200,
+            platforms: [],
+            enemies: [],
+            goal: { x: 0, y: 0, w: 100, h: 40 }
+        };
+
+        let particles = [];
+        function createParticles(x, y, count, color, maxSpeed = 5) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * maxSpeed + 1;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: Math.random() * 3 + 1.5,
+                    color,
+                    life: 1.0,
+                    decay: Math.random() * 0.03 + 0.015
+                });
+            }
+        }
+
+        function updateParticles() {
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= p.decay;
+            });
+            particles = particles.filter(p => p.life > 0);
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.life);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x - camera.x, p.y - camera.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        function rayIntersectBox(rayStart, rayDir, box) {
+            let tmin = 0;
+            let tmax = Infinity;
+
+            const invDirX = 1 / (rayDir.x || 0.00001);
+            let t1 = (box.x - rayStart.x) * invDirX;
+            let t2 = (box.x + box.w - rayStart.x) * invDirX;
+            tmin = Math.max(tmin, Math.min(t1, t2));
+            tmax = Math.min(tmax, Math.max(t1, t2));
+
+            const invDirY = 1 / (rayDir.y || 0.00001);
+            let t3 = (box.y - rayStart.y) * invDirY;
+            let t4 = (box.y + box.h - rayStart.y) * invDirY;
+            tmin = Math.max(tmin, Math.min(t3, t4));
+            tmax = Math.min(tmax, Math.max(t1, t2), Math.max(t3, t4));
+
+            if (tmax >= tmin && tmin >= 0) {
+                return {
+                    x: rayStart.x + rayDir.x * tmin,
+                    y: rayStart.y + rayDir.y * tmin,
+                    dist: tmin
+                };
+            }
+            return null;
+        }
+
+        function loadStage(stageNum) {
+            currentStageIndex = stageNum;
+            gameTime = 0;
+            killCount = 0;
+            screenShake = 0;
+            particles = [];
+            webProjectiles = [];
+            lastTimestamp = performance.now();
+
+            level.platforms = [];
+            level.enemies = [];
+
+            if (stageNum === 1) {
+                level.width = 2600;
+                level.height = 4500;
+
+                level.platforms.push({ x: 0, y: 4400, w: 2600, h: 200, color: '#166534' });
+                level.platforms.push({ x: 0, y: 0, w: 60, h: 4400, color: '#14532d' });
+                level.platforms.push({ x: 2540, y: 0, w: 60, h: 4400, color: '#14532d' });
+
+                const platformColors = ['#15803d', '#166534', '#22c55e', '#047857'];
+                
+                for (let i = 0; i < 65; i++) {
+                    const row = Math.floor(i / 3);
+                    const col = i % 3;
+                    
+                    const pw = 80 + Math.random() * 70;
+                    const ph = 20 + Math.random() * 10;
+                    
+                    const px = 100 + col * 800 + (Math.random() * 450);
+                    const py = 4100 - (row * 180) + (Math.random() * 60 - 30);
+                    const color = platformColors[Math.floor(Math.random() * platformColors.length)];
+
+                    level.platforms.push({ x: px, y: py, w: pw, h: ph, color });
+
+                    // 지상 적 생성 (개체수 감소: 5번째 발판마다 생성)
+                    if (i % 5 === 1) {
+                        level.enemies.push({
+                            x: px + pw / 2,
+                            y: py - 18,
+                            vx: 1.2,
+                            vy: 0,
+                            rangeMin: px + 10,
+                            rangeMax: px + pw - 10,
+                            alive: true,
+                            radius: 12,
+                            isFlying: false
+                        });
+                    }
+
+                    // 공중 적 생성 (개체수 감소: 6번째 발판마다 생성)
+                    if (i % 6 === 3) {
+                        const airX = px + (Math.random() * pw);
+                        const airY = py - (80 + Math.random() * 70);
+                        level.enemies.push({
+                            x: airX,
+                            y: airY,
+                            startY: airY,
+                            vx: (Math.random() > 0.5 ? 1 : -1) * (1.0 + Math.random() * 0.8),
+                            vy: 0,
+                            rangeMin: Math.max(100, airX - 150),
+                            rangeMax: Math.min(level.width - 100, airX + 150),
+                            alive: true,
+                            radius: 13,
+                            isFlying: true,
+                            floatTime: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+
+                level.goal = { x: 1150, y: 250, w: 300, h: 40 };
+                level.platforms.push({ x: 1000, y: 290, w: 600, h: 40, color: '#f59e0b' });
+
+                document.getElementById('hudStage').innerText = 'STAGE 1';
+                document.getElementById('hudTitle').innerText = '울창한 숲속 수풀';
+
+            } else {
+                level.width = 3000;
+                level.height = 5500;
+
+                level.platforms.push({ x: 0, y: 5400, w: 3000, h: 200, color: '#334155' });
+                level.platforms.push({ x: 0, y: 0, w: 70, h: 5400, color: '#1e293b' });
+                level.platforms.push({ x: 2930, y: 0, w: 70, h: 5400, color: '#1e293b' });
+
+                for (let i = 0; i < 85; i++) {
+                    const row = Math.floor(i / 4);
+                    const col = i % 4;
+
+                    const pw = 65 + Math.random() * 60;
+                    const ph = 22 + Math.random() * 12;
+                    const px = 120 + col * 680 + (Math.random() * 380);
+                    const py = 5100 - (row * 170) + (Math.random() * 70 - 35);
+
+                    level.platforms.push({ x: px, y: py, w: pw, h: ph, color: '#475569' });
+
+                    // 지상 적 생성 (개체수 감소: 5번째 발판마다)
+                    if (i % 5 === 0) {
+                        level.enemies.push({
+                            x: px + pw / 2,
+                            y: py - 20,
+                            vx: 1.8,
+                            vy: 0,
+                            rangeMin: px + 10,
+                            rangeMax: px + pw - 10,
+                            alive: true,
+                            radius: 14,
+                            isFlying: false
+                        });
+                    }
+
+                    // 공중 적 생성 (개체수 감소: 4번째 발판마다)
+                    if (i % 4 === 2) {
+                        const airX = px + (Math.random() * pw);
+                        const airY = py - (90 + Math.random() * 80);
+                        level.enemies.push({
+                            x: airX,
+                            y: airY,
+                            startY: airY,
+                            vx: (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 1.0),
+                            vy: 0,
+                            rangeMin: Math.max(100, airX - 180),
+                            rangeMax: Math.min(level.width - 100, airX + 180),
+                            alive: true,
+                            radius: 14,
+                            isFlying: true,
+                            floatTime: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+
+                level.goal = { x: 1350, y: 250, w: 300, h: 40 };
+                level.platforms.push({ x: 1200, y: 290, w: 600, h: 40, color: '#f59e0b' });
+
+                document.getElementById('hudStage').innerText = 'STAGE 2';
+                document.getElementById('hudTitle').innerText = '험난한 암벽 절벽';
+            }
+
+            player.reset(level.width / 2, level.height - 300);
+        }
+
+        function updateEnemies() {
+            level.enemies.forEach(e => {
+                if (!e.alive) return;
+                
+                // 이동 처리
+                e.x += e.vx;
+                if (e.x < e.rangeMin || e.x > e.rangeMax) {
+                    e.vx *= -1;
+                }
+
+                // 공중 적 부유 애니메이션
+                if (e.isFlying) {
+                    e.floatTime += 0.05;
+                    e.y = e.startY + Math.sin(e.floatTime) * 15;
+                }
+
+                const distToPlayer = Math.hypot(player.x - e.x, player.y - e.y);
+                if (distToPlayer < player.radius + e.radius) {
+                    // 우클릭 부착 중이거나 대시 중일 때에는 피해를 받지 않음
+                    if (player.isDashing || player.attachedEnemy === e) {
+                        if (player.isDashing) {
+                            e.alive = false;
+                            killCount++;
+                            createParticles(e.x, e.y, 20, '#fbbf24', 7);
+                            AudioFX.playEnemyPop();
+                            screenShake = 6;
+                        }
+                    } else {
+                        triggerGameOver('적 충돌로 부상을 입었습니다!');
+                    }
+                }
+            });
+        }
+
+        function drawEnemies() {
+            level.enemies.forEach(e => {
+                if (!e.alive) return;
+                ctx.save();
+                ctx.translate(e.x - camera.x, e.y - camera.y);
+
+                // 공중 적 보라색/지상 적 빨간색 구분
+                ctx.fillStyle = e.isFlying ? '#c084fc' : '#ef4444';
+                
+                // 공중 적 날개 애니메이션 연출
+                if (e.isFlying) {
+                    const wingAngle = Math.sin(Date.now() * 0.02) * 0.4;
+                    ctx.fillStyle = '#a855f7';
+                    // 왼쪽 날개
+                    ctx.beginPath();
+                    ctx.ellipse(-12, -4, 10, 5, -wingAngle, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 오른쪽 날개
+                    ctx.beginPath();
+                    ctx.ellipse(12, -4, 10, 5, wingAngle, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#e879f9';
+                }
+
+                ctx.beginPath();
+                ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 눈 그리기
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(-3, -2, 2.5, 0, Math.PI * 2);
+                ctx.arc(3, -2, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            });
+        }
+
+        function drawEnvironment() {
+            level.platforms.forEach(p => {
+                ctx.fillStyle = p.color || '#334155';
+                ctx.fillRect(p.x - camera.x, p.y - camera.y, p.w, p.h);
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(p.x - camera.x, p.y - camera.y, p.w, p.h);
+            });
+
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.4)';
+            ctx.fillRect(level.goal.x - camera.x, level.goal.y - camera.y, level.goal.w, level.goal.h);
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(level.goal.x - camera.x, level.goal.y - camera.y, level.goal.w, level.goal.h);
+        }
+
+        function updateProgressHUD() {
+            const startY = level.height - 300;
+            const endY = level.goal.y;
+            const currentY = player.y;
+
+            let progress = Math.max(0, Math.min(100, Math.floor(((startY - currentY) / (startY - endY)) * 100)));
+            document.getElementById('progressPercent').innerText = progress + '%';
+            document.getElementById('progressBar').style.width = progress + '%';
+
+            if (player.x >= level.goal.x && player.x <= level.goal.x + level.goal.w &&
+                player.y >= level.goal.y - 20 && player.y <= level.goal.y + level.goal.h + 20) {
+                triggerVictory();
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 100);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+        }
+
+        function triggerVictory() {
+            gameState = 'VICTORY';
+            AudioFX.playVictory();
+
+            // 최초 클리어 기록 확인 및 저장
+            const isFirstClear = !localStorage.getItem(`spider_stage_${currentStageIndex}_cleared`);
+            if (isFirstClear) {
+                localStorage.setItem(`spider_stage_${currentStageIndex}_cleared`, 'true');
+            }
+
+            // 미션 달성 여부 확인 (적 처치 기준 5마리로 변경)
+            const m1Achieved = killCount >= 5;
+            const m2Achieved = gameTime <= 25;
+            const m3Achieved = true; // 클리어 시점에 항상 달성 (최초클리어 포함)
+
+            let starCount = 0;
+            if (m1Achieved) starCount++;
+            if (m2Achieved) starCount++;
+            if (m3Achieved) starCount++;
+
+            document.getElementById('endStatusBadge').className = 'inline-block px-3 py-1 rounded-full text-xs font-extrabold uppercase mb-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            document.getElementById('endStatusBadge').innerText = 'STAGE CLEAR!';
+            document.getElementById('endTitle').innerText = '정상 등반 성공!';
+            document.getElementById('endSubtitle').innerText = '새끼거미가 성공적으로 산 꼭대기에 도착했습니다!';
+            
+            document.getElementById('resultTime').innerText = formatTime(gameTime);
+            document.getElementById('resultKills').innerText = killCount + ' 명';
+
+            let rank = 'C CLASS';
+            if (starCount === 3) rank = 'S CLASS';
+            else if (starCount === 2) rank = 'A CLASS';
+            else if (starCount === 1) rank = 'B CLASS';
+            document.getElementById('resultRank').innerText = rank;
+
+            // 별 및 미션 결과 표시
+            const starContainer = document.getElementById('starContainer');
+            starContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < starCount) {
+                    starContainer.innerHTML += `<span class="text-4xl filter drop-shadow-md star-anim" style="animation-delay: ${i * 0.15}s">⭐</span>`;
+                } else {
+                    starContainer.innerHTML += `<span class="text-4xl opacity-30 grayscale">⭐</span>`;
+                }
+            }
+
+            // 미션 리스트 표시 업데이트
+            const setEndMission = (elementId, isAchieved, text) => {
+                const el = document.getElementById(elementId);
+                if (isAchieved) {
+                    el.className = "flex items-center gap-2 text-emerald-400 font-bold";
+                    el.innerHTML = `<span>✅</span> ${text} <span class="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-300 ml-auto">성공</span>`;
+                } else {
+                    el.className = "flex items-center gap-2 text-slate-500";
+                    el.innerHTML = `<span>❌</span> ${text} <span class="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 ml-auto">실패</span>`;
+                }
+            };
+
+            setEndMission('endM1', m1Achieved, '적 5마리 이상 처치');
+            setEndMission('endM2', m2Achieved, '25초 안에 클리어');
+            setEndMission('endM3', m3Achieved, '최초 클리어');
+
+            document.getElementById('endModal').classList.remove('hidden');
+        }
+
+        function triggerGameOver(reason) {
+            gameState = 'GAMEOVER';
+
+            document.getElementById('endStatusBadge').className = 'inline-block px-3 py-1 rounded-full text-xs font-extrabold uppercase mb-2 bg-rose-500/20 text-rose-400 border border-rose-500/30';
+            document.getElementById('endStatusBadge').innerText = 'GAME OVER';
+            document.getElementById('endTitle').innerText = '등반 실패!';
+            document.getElementById('endSubtitle').innerText = reason;
+
+            document.getElementById('resultTime').innerText = formatTime(gameTime);
+            document.getElementById('resultKills').innerText = killCount + ' 명';
+            document.getElementById('resultRank').innerText = 'FAILED';
+
+            document.getElementById('starContainer').innerHTML = '<span class="text-3xl text-slate-500">❌</span>';
+            
+            // 게임오버 시 미션 실패 표시
+            document.getElementById('endM1').className = "flex items-center gap-2 text-slate-500";
+            document.getElementById('endM1').innerHTML = `<span>❌</span> 적 5마리 이상 처치`;
+            document.getElementById('endM2').className = "flex items-center gap-2 text-slate-500";
+            document.getElementById('endM2').innerHTML = `<span>❌</span> 25초 안에 클리어`;
+            document.getElementById('endM3').className = "flex items-center gap-2 text-slate-500";
+            document.getElementById('endM3').innerHTML = `<span>❌</span> 최초 클리어`;
+
+            document.getElementById('endModal').classList.remove('hidden');
+        }
+
+        function updatePauseMissions() {
+            const isAlreadyCleared = localStorage.getItem(`spider_stage_${currentStageIndex}_cleared`);
+            
+            // Mission 1: 적 5마리 이상 처치
+            const m1Status = document.getElementById('pauseM1Status');
+            const m1Icon = document.getElementById('pauseM1Icon');
+            const m1Text = document.getElementById('pauseM1Text');
+            m1Status.innerText = `(${killCount}/5)`;
+            if (killCount >= 5) {
+                m1Icon.innerText = '⭐';
+                m1Icon.className = 'text-amber-400';
+                m1Text.className = 'text-emerald-400 font-bold';
+                m1Status.className = 'text-[11px] font-bold text-emerald-400';
+            } else {
+                m1Icon.innerText = '⭐';
+                m1Icon.className = 'text-slate-600';
+                m1Text.className = 'text-slate-300';
+                m1Status.className = 'text-[11px] font-bold text-slate-400';
+            }
+
+            // Mission 2: 25초 안에 클리어
+            const m2Status = document.getElementById('pauseM2Status');
+            const m2Icon = document.getElementById('pauseM2Icon');
+            const m2Text = document.getElementById('pauseM2Text');
+            if (gameTime <= 25) {
+                m2Icon.innerText = '⭐';
+                m2Icon.className = 'text-amber-400';
+                m2Text.className = 'text-emerald-400 font-bold';
+                m2Status.innerText = '가능 (' + gameTime.toFixed(1) + 's)';
+                m2Status.className = 'text-[11px] font-bold text-emerald-400';
+            } else {
+                m2Icon.innerText = '⭐';
+                m2Icon.className = 'text-slate-600';
+                m2Text.className = 'text-slate-500 line-through';
+                m2Status.innerText = '초과 (' + gameTime.toFixed(1) + 's)';
+                m2Status.className = 'text-[11px] font-bold text-rose-400';
+            }
+
+            // Mission 3: 최초 클리어
+            const m3Status = document.getElementById('pauseM3Status');
+            const m3Icon = document.getElementById('pauseM3Icon');
+            const m3Text = document.getElementById('pauseM3Text');
+            if (isAlreadyCleared) {
+                m3Icon.innerText = '⭐';
+                m3Icon.className = 'text-amber-400';
+                m3Text.className = 'text-emerald-400 font-bold';
+                m3Status.innerText = '달성완료';
+                m3Status.className = 'text-[11px] font-bold text-emerald-400';
+            } else {
+                m3Icon.innerText = '⭐';
+                m3Icon.className = 'text-amber-400/50';
+                m3Text.className = 'text-slate-300';
+                m3Status.innerText = '클리어 시 달성';
+                m3Status.className = 'text-[11px] font-bold text-amber-300';
+            }
+
+            // 총 미션 가능 개수 업데이트
+            let achievedCount = 0;
+            if (killCount >= 5) achievedCount++;
+            if (gameTime <= 25) achievedCount++;
+            if (isAlreadyCleared || gameState === 'PLAYING') achievedCount++;
+            
+            document.getElementById('pauseMissionCount').innerText = `현재 진행: ${Math.min(3, achievedCount)} / 3`;
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                updatePauseMissions();
+                document.getElementById('pauseModal').classList.remove('hidden');
+            } else if (gameState === 'PAUSED') {
+                resumeGame();
+            }
+        }
+
+        function resumeGame() {
+            if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                lastTimestamp = performance.now();
+                document.getElementById('pauseModal').classList.add('hidden');
+            }
+        }
+
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            AudioFX.init();
+            keys[e.key.toLowerCase()] = true;
+            
+            if (e.key === 'Escape' || e.key.toLowerCase() === 'p') {
+                if (gameState === 'PLAYING' || gameState === 'PAUSED') {
+                    togglePause();
+                }
+            }
+
+            if (e.key === ' ' || e.key === 'Shift') e.preventDefault();
+            
+            if (gameState === 'PLAYING') {
+                if (e.key === ' ' || e.key.toLowerCase() === 'space') {
+                    player.jump();
+                }
+                if (e.key === 'Shift' || e.key.toLowerCase() === 'shift') {
+                    player.handleShiftAction();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.screenX = e.clientX;
+            mouse.screenY = e.clientY;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            AudioFX.init();
+            if (e.button === 0) { // 좌클릭: 와이어 그랩
+                mouse.down = true;
+                if (gameState === 'PLAYING') player.shootHook();
+            } else if (e.button === 2) { // 우클릭: 적에게 밀착 홀드 시작!
+                e.preventDefault();
+                mouse.rightDown = true;
+                if (gameState === 'PLAYING') player.startEnemyHold();
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) { // 좌클릭 해제
+                mouse.down = false;
+                if (gameState === 'PLAYING') player.releaseHook();
+            } else if (e.button === 2) { // 우클릭 해제: 적 처치 후 도약!
+                mouse.rightDown = false;
+                if (gameState === 'PLAYING') player.releaseEnemyHoldAndLeap();
+            }
+        });
+
+        let webProjectiles = [];
+
+        // Player Physics Object
+        const player = {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            radius: 15,
+            grounded: false,
+            facing: 1,
+            
+            hook: {
+                active: false,
+                x: 0,
+                y: 0,
+                ropeLength: 0
+            },
+
+            // 적 홀드 & 도약 관련 상태
+            attachedEnemy: null,
+
+            blastCooldown: 0,
+            maxBlastCooldown: 120,
+
+            dashCooldown: 0,
+            hasDashedInAir: false, // 공중 대시 사용 여부 플래그 추가
+            isDashing: false,
+            dashTimer: 0,
+
+            trail: [],
+
+            reset(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.grounded = false;
+                this.hook.active = false;
+                this.attachedEnemy = null;
+                this.blastCooldown = 0;
+                this.dashCooldown = 0;
+                this.hasDashedInAir = false; // 플래그 초기화
+                this.trail = [];
+                webProjectiles = [];
+            },
+
+            // 마우스 포인터 근처의 적을 탐색하여 우클릭 누르는 동안 밀착 홀드
+            startEnemyHold() {
+                const worldMouseX = mouse.screenX + camera.x;
+                const worldMouseY = mouse.screenY + camera.y;
+
+                let targetEnemy = null;
+                let minDistance = 60;
+
+                level.enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        const distToMouse = Math.hypot(enemy.x - worldMouseX, enemy.y - worldMouseY);
+                        if (distToMouse < minDistance) {
+                            minDistance = distToMouse;
+                            targetEnemy = enemy;
+                        }
+                    }
+                });
+
+                if (targetEnemy) {
+                    this.attachedEnemy = targetEnemy;
+                    this.hook.active = false; // 와이어 그랩 해제
+                    this.x = targetEnemy.x;
+                    this.y = targetEnemy.y;
+                    this.vx = 0;
+                    this.vy = 0;
+
+                    // 이동/밀착 이펙트
+                    createParticles(this.x, this.y, 12, '#c084fc', 5);
+                    AudioFX.playTeleport();
+                }
+            },
+
+            // 우클릭을 떼었을 때 적을 처치하며 마우스 방향으로 도약!
+            releaseEnemyHoldAndLeap() {
+                if (!this.attachedEnemy) return;
+
+                const targetEnemy = this.attachedEnemy;
+                
+                // 플레이어가 도약할 방향 계산 (마우스 클릭 위치 방향)
+                const worldMouseX = mouse.screenX + camera.x;
+                const worldMouseY = mouse.screenY + camera.y;
+
+                let dx = worldMouseX - this.x;
+                let dy = worldMouseY - this.y;
+                let dist = Math.hypot(dx, dy);
+
+                // 마우스 위치가 너무 가깝거나 같을 경우 기본 위쪽 방향 지정
+                if (dist < 10) {
+                    dx = 0;
+                    dy = -1;
+                    dist = 1;
+                }
+
+                const dirX = dx / dist;
+                const dirY = dy / dist;
+
+                // 강력한 도약 속도 부여
+                const leapSpeed = 19;
+                this.vx = dirX * leapSpeed;
+                this.vy = dirY * leapSpeed;
+
+                // 적 처치 처리
+                if (targetEnemy.alive) {
+                    targetEnemy.alive = false;
+                    killCount++;
+                    createParticles(targetEnemy.x, targetEnemy.y, 25, '#f43f5e', 8);
+                    AudioFX.playEnemyPop();
+                }
+
+                AudioFX.playLeap();
+                screenShake = 10;
+                
+                // 붙기 상태 해제 및 공중 대시 횟수 리셋 (적을 타고 넘어가면 대시 기회 다시 부여)
+                this.attachedEnemy = null;
+                this.hasDashedInAir = false;
+            },
+
+            jump() {
+                if (this.attachedEnemy) return; // 홀드 중엔 기본 점프 불가
+
+                if (this.hook.active) {
+                    const dx = this.hook.x - this.x;
+                    const dy = this.hook.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist > 5) {
+                        const pullPower = 16;
+                        this.vx = (dx / dist) * pullPower;
+                        this.vy = (dy / dist) * pullPower;
+                        
+                        this.hook.ropeLength = Math.max(20, dist - 80);
+                        createParticles(this.x, this.y, 10, '#38bdf8', 5);
+                        AudioFX.playDash();
+                    }
+                    return;
+                }
+
+                if (this.grounded) {
+                    this.vy = -12;
+                    this.grounded = false;
+                    createParticles(this.x, this.y + this.radius, 6, '#94a3b8', 3);
+                }
+            },
+
+            shootHook() {
+                if (this.attachedEnemy) return; // 적 홀드 중엔 그랩 불가
+
+                const worldMouseX = mouse.screenX + camera.x;
+                const worldMouseY = mouse.screenY + camera.y;
+
+                const rayDir = {
+                    x: worldMouseX - this.x,
+                    y: worldMouseY - this.y
+                };
+                const rayLen = Math.hypot(rayDir.x, rayDir.y);
+                if (rayLen === 0) return;
+
+                rayDir.x /= rayLen;
+                rayDir.y /= rayLen;
+
+                let closestHit = null;
+                let minDistance = 850;
+
+                level.platforms.forEach(p => {
+                    const hit = rayIntersectBox({ x: this.x, y: this.y }, rayDir, p);
+                    if (hit && hit.dist < minDistance) {
+                        minDistance = hit.dist;
+                        closestHit = hit;
+                    }
+                });
+
+                if (closestHit) {
+                    this.hook.active = true;
+                    this.hook.x = closestHit.x;
+                    this.hook.y = closestHit.y;
+                    this.hook.ropeLength = minDistance;
+                    AudioFX.playWebShoot();
+                    createParticles(closestHit.x, closestHit.y, 8, '#38bdf8', 4);
+                }
+            },
+
+            releaseHook() {
+                if (this.hook.active) {
+                    this.hook.active = false;
+                    this.vx *= 0.8;
+                    this.vy *= 0.8;
+                }
+            },
+
+            handleShiftAction() {
+                if (this.attachedEnemy) return;
+
+                const hasDirectionInput = keys['w'] || keys['s'] || keys['a'] || keys['d'] || 
+                                          keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'];
+
+                if (hasDirectionInput) {
+                    this.dash();
+                } else {
+                    this.fireBlast();
+                }
+            },
+
+            dash() {
+                // 이미 공중에서 대시를 사용했으면 점프 상태일 때 대시 사용 불가
+                if (!this.grounded && this.hasDashedInAir) return;
+
+                if (this.dashCooldown <= 0) {
+                    let dirX = 0;
+                    let dirY = 0;
+
+                    if (keys['w'] || keys['arrowup']) dirY -= 1;
+                    if (keys['s'] || keys['arrowdown']) dirY += 1;
+                    if (keys['a'] || keys['arrowleft']) dirX -= 1;
+                    if (keys['d'] || keys['arrowright']) dirX += 1;
+
+                    const angle = Math.atan2(dirY, dirX);
+
+                    const dashSpeed = 18;
+                    this.vx = Math.cos(angle) * dashSpeed;
+                    this.vy = Math.sin(angle) * dashSpeed;
+                    this.dashCooldown = 30;
+                    this.isDashing = true;
+                    this.dashTimer = 10;
+                    
+                    // 공중에서 사용한 경우 땅에 닿을 때까지 더 이상 대시 불가능하게 설정
+                    if (!this.grounded) {
+                        this.hasDashedInAir = true;
+                    }
+
+                    screenShake = 6;
+                    AudioFX.playDash();
+                    createParticles(this.x, this.y, 16, '#38bdf8', 6);
+                }
+            },
+
+            fireBlast() {
+                if (this.blastCooldown <= 0) {
+                    const angle = Math.atan2((mouse.screenY + camera.y) - this.y, (mouse.screenX + camera.x) - this.x);
+                    
+                    const knockbackPower = 14;
+                    this.vx -= Math.cos(angle) * knockbackPower;
+                    this.vy -= Math.sin(angle) * knockbackPower;
+
+                    this.blastCooldown = this.maxBlastCooldown;
+                    screenShake = 8;
+                    AudioFX.playBlast();
+
+                    const projSpeed = 20;
+                    webProjectiles.push({
+                        x: this.x + Math.cos(angle) * 25,
+                        y: this.y + Math.sin(angle) * 25,
+                        vx: Math.cos(angle) * projSpeed,
+                        vy: Math.sin(angle) * projSpeed,
+                        radius: 20,
+                        life: 35
+                    });
+
+                    createParticles(this.x + Math.cos(angle) * 25, this.y + Math.sin(angle) * 25, 16, '#f43f5e', 7);
+                }
+            },
+
+            update() {
+                if (this.blastCooldown > 0) this.blastCooldown--;
+                if (this.dashCooldown > 0) this.dashCooldown--;
+                if (this.dashTimer > 0) this.dashTimer--; else this.isDashing = false;
+
+                // 적에게 홀드 부착되어 있는 경우 적 위치를 동기화하여 붙어 다님
+                if (this.attachedEnemy) {
+                    if (!this.attachedEnemy.alive) {
+                        this.attachedEnemy = null;
+                    } else {
+                        this.x = this.attachedEnemy.x;
+                        this.y = this.attachedEnemy.y;
+                        this.vx = 0;
+                        this.vy = 0;
+                        this.grounded = false;
+                        this.hook.active = false;
+                        
+                        // 붙어있을 때 파티클 연출
+                        if (Math.random() < 0.3) {
+                            createParticles(this.x, this.y, 2, '#e879f9', 3);
+                        }
+                        
+                        // 적 홀드 물리 스킵
+                        this.updateUI();
+                        return;
+                    }
+                }
+
+                if (!mouse.down && this.hook.active) {
+                    this.releaseHook();
+                }
+
+                if (Math.hypot(this.vx, this.vy) > 8) {
+                    this.trail.push({ x: this.x, y: this.y, alpha: 0.6 });
+                }
+                this.trail.forEach(t => t.alpha -= 0.05);
+                this.trail = this.trail.filter(t => t.alpha > 0);
+
+                // 정속 이동 및 입력 해제 시 관성 없이 즉시 정지
+                const moveSpeed = 5.5;
+                const leftPressed = keys['a'] || keys['arrowleft'];
+                const rightPressed = keys['d'] || keys['arrowright'];
+
+                if (!this.isDashing && !this.hook.active) {
+                    if (leftPressed && !rightPressed) {
+                        this.vx = -moveSpeed;
+                        this.facing = -1;
+                    } else if (rightPressed && !leftPressed) {
+                        this.vx = moveSpeed;
+                        this.facing = 1;
+                    } else {
+                        this.vx = 0;
+                    }
+                } else if (this.hook.active) {
+                    if (leftPressed) { this.vx -= 0.5; this.facing = -1; }
+                    if (rightPressed) { this.vx += 0.5; this.facing = 1; }
+                }
+
+                this.vy += 0.55;
+
+                // Pendulum Swinging Physics
+                if (this.hook.active) {
+                    const dx = this.hook.x - this.x;
+                    const dy = this.hook.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist > this.hook.ropeLength) {
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        const tensionForce = (dist - this.hook.ropeLength) * 0.1;
+                        this.vx += nx * tensionForce;
+                        this.vy += ny * tensionForce;
+                    }
+
+                    if (keys['w'] && this.hook.ropeLength > 30) this.hook.ropeLength -= 4.5;
+                    if (keys['s'] && this.hook.ropeLength < 600) this.hook.ropeLength += 4.5;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Platform Collisions
+                this.grounded = false;
+                level.platforms.forEach(p => {
+                    const closestX = Math.max(p.x, Math.min(this.x, p.x + p.w));
+                    const closestY = Math.max(p.y, Math.min(this.y, p.y + p.h));
+                    const distX = this.x - closestX;
+                    const distY = this.y - closestY;
+                    const distance = Math.hypot(distX, distY);
+
+                    if (distance < this.radius) {
+                        const overlap = this.radius - distance;
+                        if (distance === 0) return;
+                        
+                        const nx = distX / distance;
+                        const ny = distY / distance;
+
+                        this.x += nx * overlap;
+                        this.y += ny * overlap;
+
+                        if (ny < -0.5) {
+                            this.grounded = true;
+                            this.hasDashedInAir = false; // 땅에 착지했으므로 대시 기회 리셋!
+                            this.vy = 0;
+                        } else if (ny > 0.5) {
+                            this.vy = 0;
+                        }
+                        if (Math.abs(nx) > 0.5) {
+                            this.vx = 0;
+                        }
+                    }
+                });
+
+                if (this.y > level.height + 200) {
+                    triggerGameOver('높은 곳에서 추락했습니다!');
+                }
+
+                this.updateUI();
+            },
+
+            updateUI() {
+                // Update UI Cooldown
+                const cooldownTextEl = document.getElementById('cooldownText');
+                const cooldownBarEl = document.getElementById('cooldownBar');
+                
+                if (this.blastCooldown > 0) {
+                    const secondsLeft = (this.blastCooldown / 60).toFixed(1);
+                    const percentReady = 100 - ((this.blastCooldown / this.maxBlastCooldown) * 100);
+                    cooldownTextEl.innerText = `${secondsLeft}초`;
+                    cooldownTextEl.className = 'text-lg font-black text-amber-400';
+                    cooldownBarEl.style.width = `${percentReady}%`;
+                    cooldownBarEl.className = 'h-full bg-amber-400 transition-all duration-75';
+                } else {
+                    cooldownTextEl.innerText = 'READY';
+                    cooldownTextEl.className = 'text-lg font-black text-emerald-400';
+                    cooldownBarEl.style.width = '100%';
+                    cooldownBarEl.className = 'h-full bg-emerald-400 transition-all duration-75';
+                }
+            },
+            
+            draw() {
+                if (this.hook.active) {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+                    ctx.lineWidth = 1.8;
+                    ctx.shadowColor = '#38bdf8';
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - camera.x, this.y - camera.y);
+                    ctx.lineTo(this.hook.x - camera.x, this.hook.y - camera.y);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.beginPath();
+                    ctx.arc(this.hook.x - camera.x, this.hook.y - camera.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                this.trail.forEach(t => {
+                    ctx.fillStyle = `rgba(52, 211, 153, ${t.alpha * 0.4})`;
+                    ctx.beginPath();
+                    ctx.arc(t.x - camera.x, t.y - camera.y, this.radius * 0.8, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                ctx.save();
+                ctx.translate(this.x - camera.x, this.y - camera.y);
+
+                if (this.attachedEnemy) {
+                    ctx.shadowColor = '#e879f9';
+                    ctx.shadowBlur = 15;
+                } else if (this.dashCooldown <= 0) {
+                    ctx.shadowColor = '#34d399';
+                    ctx.shadowBlur = 10;
+                }
+
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 2.5;
+                const legOffset = Math.sin(Date.now() * 0.02) * 3;
+
+                for (let i = -1; i <= 1; i += 2) {
+                    for (let j = -1; j <= 1; j += 0.66) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.quadraticCurveTo(
+                            i * (this.radius + 8), j * 6 + legOffset,
+                            i * (this.radius + 12), j * 12
+                        );
+                        ctx.stroke();
+                    }
+                }
+
+                const bodyGradient = ctx.createRadialGradient(-2, -2, 2, 0, 0, this.radius);
+                if (this.attachedEnemy) {
+                    bodyGradient.addColorStop(0, '#f472b6');
+                    bodyGradient.addColorStop(0.7, '#c084fc');
+                    bodyGradient.addColorStop(1, '#7e22ce');
+                } else {
+                    bodyGradient.addColorStop(0, '#4ade80');
+                    bodyGradient.addColorStop(0.7, '#16a34a');
+                    bodyGradient.addColorStop(1, '#065f46');
+                }
+
+                ctx.fillStyle = bodyGradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.facing * 5 - 2, -3, 4, 0, Math.PI * 2);
+                ctx.arc(this.facing * 5 + 4, -3, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+
+                // 조준선 및 적 타겟 락온 마커
+                const worldMouseX = mouse.screenX + camera.x;
+                const worldMouseY = mouse.screenY + camera.y;
+                let hoveredEnemy = null;
+
+                level.enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        const distToMouse = Math.hypot(enemy.x - worldMouseX, enemy.y - worldMouseY);
+                        if (distToMouse < 60) {
+                            hoveredEnemy = enemy;
+                        }
+                    }
+                });
+
+                ctx.save();
+                if (this.attachedEnemy) {
+                    // 적 붙어있을 때 (우클릭 홀드 중) 도약 방향 가이드 화살표 연출
+                    const guideAngle = Math.atan2(worldMouseY - this.y, worldMouseX - this.x);
+                    ctx.strokeStyle = '#f43f5e';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([6, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - camera.x, this.y - camera.y);
+                    ctx.lineTo(this.x - camera.x + Math.cos(guideAngle) * 80, this.y - camera.y + Math.sin(guideAngle) * 80);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                } else if (hoveredEnemy) {
+                    // 적 타깃 락온 링 연출 (우클릭 준비 완료 표시)
+                    ctx.strokeStyle = '#e879f9';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.arc(hoveredEnemy.x - camera.x, hoveredEnemy.y - camera.y, hoveredEnemy.radius + 10, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = '#c084fc';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(mouse.screenX, mouse.screenY, 12, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = (this.blastCooldown > 0) ? 'rgba(239, 68, 68, 0.6)' : 'rgba(52, 211, 153, 0.8)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(mouse.screenX, mouse.screenY, 10, 0, Math.PI * 2);
+                    ctx.moveTo(mouse.screenX - 14, mouse.screenY);
+                    ctx.lineTo(mouse.screenX + 14, mouse.screenY);
+                    ctx.moveTo(mouse.screenX, mouse.screenY - 14);
+                    ctx.lineTo(mouse.screenX, mouse.screenY + 14);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        };
+
+        function updateProjectiles() {
+            webProjectiles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+
+                level.enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                        if (dist < p.radius + 12) {
+                            enemy.alive = false;
+                            killCount++;
+                            p.life = 0;
+                            createParticles(enemy.x, enemy.y, 25, '#f43f5e', 8);
+                            AudioFX.playEnemyPop();
+                            screenShake = 8;
+                        }
+                    }
+                });
+            });
+            webProjectiles = webProjectiles.filter(p => p.life > 0);
+        }
+
+        function drawProjectiles() {
+            webProjectiles.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x - camera.x, p.y - camera.y);
+
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 10;
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(-p.radius, 0); ctx.lineTo(p.radius, 0);
+                ctx.moveTo(0, -p.radius); ctx.lineTo(0, p.radius);
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        }
+
+        function gameLoop(timestamp) {
+            if (!timestamp) timestamp = performance.now();
+            const dt = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            if (screenShake > 0) {
+                ctx.save();
+                const shakeX = (Math.random() - 0.5) * screenShake;
+                const shakeY = (Math.random() - 0.5) * screenShake;
+                ctx.translate(shakeX, shakeY);
+                screenShake *= 0.85;
+            }
+
+            if (gameState === 'PLAYING') {
+                gameTime += dt || 0.016;
+                document.getElementById('hudTime').innerText = formatTime(gameTime);
+                document.getElementById('hudKills').innerText = killCount;
+
+                player.update();
+                updateProjectiles();
+                camera.update(player);
+                updateEnemies();
+                updateParticles();
+                updateProgressHUD();
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawEnvironment();
+            drawEnemies();
+            drawProjectiles();
+            player.draw();
+            drawParticles();
+
+            if (screenShake > 0) {
+                ctx.restore();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame(stageNum) {
+            document.getElementById('menuModal').classList.add('hidden');
+            document.getElementById('endModal').classList.add('hidden');
+            document.getElementById('pauseModal').classList.add('hidden');
+            document.getElementById('hudHeader').style.opacity = '1';
+            document.getElementById('hudProgress').style.opacity = '1';
+
+            loadStage(stageNum);
+            gameState = 'PLAYING';
+        }
+
+        function retryStage() {
+            startGame(currentStageIndex);
+        }
+
+        function openMenu() {
+            document.getElementById('endModal').classList.add('hidden');
+            document.getElementById('pauseModal').classList.add('hidden');
+            document.getElementById('hudHeader').style.opacity = '0';
+            document.getElementById('hudProgress').style.opacity = '0';
+            document.getElementById('menuModal').classList.remove('hidden');
+            gameState = 'MENU';
+        }
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
